@@ -36,6 +36,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pulling, setPulling] = useState(false);
   const [branchSwitchConflict, setBranchSwitchConflict] = useState<{
     branch: string;
     changedFiles: string[];
@@ -192,6 +193,30 @@ export default function Home() {
     }
   };
 
+  const handlePull = async () => {
+    if (!repoPath) return;
+    setError(null);
+    setNotice(null);
+    setPulling(true);
+    try {
+      const res = await fetch("/api/repo/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: repoPath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "풀할 수 없습니다.");
+      setTree(data.tree);
+      setCurrentBranch(data.current);
+      setBranches(data.branches);
+      setNotice("풀을 완료했습니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "풀할 수 없습니다.");
+    } finally {
+      setPulling(false);
+    }
+  };
+
   const handleOpenPushConfirm = async () => {
     if (!repoPath) return;
     setError(null);
@@ -258,6 +283,13 @@ export default function Home() {
                   onCreateBranchRequest={() => setCreateBranchModalOpen(true)}
                 />
               )}
+              <button
+                onClick={handlePull}
+                disabled={pulling}
+                className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                {pulling ? "풀 중..." : "풀"}
+              </button>
             </div>
             <div className="flex shrink-0 gap-2">
               <button

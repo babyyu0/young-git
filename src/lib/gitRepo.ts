@@ -257,6 +257,16 @@ export async function pushChanges(repoPath: string): Promise<void> {
   await git.raw(["push", "-u", "origin", status.current]);
 }
 
+/** 현재 브랜치를 origin의 같은 이름 브랜치로부터 pull한다. */
+export async function pullChanges(repoPath: string): Promise<void> {
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+  if (!status.current) {
+    throw new Error("현재 브랜치를 확인할 수 없습니다(detached HEAD).");
+  }
+  await git.raw(["pull", "origin", status.current]);
+}
+
 export interface BranchInfo {
   current: string;
   branches: string[];
