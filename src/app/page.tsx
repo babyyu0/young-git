@@ -328,7 +328,7 @@ export default function Home() {
                 onClick={handleOpenPushConfirm}
                 className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
               >
-                푸쉬하기
+                푸시하기
               </button>
             </div>
           </div>
