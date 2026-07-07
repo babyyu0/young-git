@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BadgeLegend } from "@/components/BadgeLegend";
 import { FileDiffViewer } from "@/components/FileDiffViewer";
-import { FileTree, type RepoFileNode } from "@/components/FileTree";
+import {
+  collectCheckablePaths,
+  FileTree,
+  type RepoFileNode,
+} from "@/components/FileTree";
 import { FolderBrowserModal } from "@/components/FolderBrowserModal";
 
 const LAST_REPO_PATH_KEY = "young-git:last-repo-path";
@@ -14,6 +19,7 @@ export default function Home() {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
     null,
   );
+  const [checkedPaths, setCheckedPaths] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +37,7 @@ export default function Home() {
       setRepoPath(data.path);
       setTree(data.tree);
       setSelectedFilePath(null);
+      setCheckedPaths(new Set());
       setBrowserOpen(false);
       localStorage.setItem(LAST_REPO_PATH_KEY, data.path);
     } catch (e) {
@@ -48,6 +55,45 @@ export default function Home() {
       if (lastPath) await handleSelect(lastPath);
     })();
   }, []);
+
+  const handleToggleCheck = (filePath: string, checked: boolean) => {
+    setCheckedPaths((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(filePath);
+      else next.delete(filePath);
+      return next;
+    });
+  };
+
+  const checkablePaths = tree ? collectCheckablePaths(tree) : [];
+  const allChecked =
+    checkablePaths.length > 0 && checkedPaths.size === checkablePaths.length;
+
+  const handleToggleCheckAll = (checked: boolean) => {
+    setCheckedPaths(checked ? new Set(checkablePaths) : new Set());
+  };
+
+  const handleBatchStage = async (staged: boolean) => {
+    if (!repoPath || checkedPaths.size === 0) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/repo/stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: repoPath,
+          filePaths: Array.from(checkedPaths),
+          staged,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "작업을 수행할 수 없습니다.");
+      setTree(data.tree);
+      setCheckedPaths(new Set());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "작업을 수행할 수 없습니다.");
+    }
+  };
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
@@ -72,12 +118,41 @@ export default function Home() {
 
         {tree && (
           <div className="flex min-h-0 flex-1 gap-4">
-            <div className="w-64 shrink-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-              <FileTree
-                nodes={tree}
-                selectedPath={selectedFilePath}
-                onFileClick={setSelectedFilePath}
-              />
+            <div className="flex w-64 shrink-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 p-2 dark:border-zinc-800">
+                <input
+                  type="checkbox"
+                  title="전체선택"
+                  disabled={checkablePaths.length === 0}
+                  checked={allChecked}
+                  onChange={(e) => handleToggleCheckAll(e.target.checked)}
+                  className="shrink-0"
+                />
+                <button
+                  disabled={checkedPaths.size === 0}
+                  onClick={() => handleBatchStage(true)}
+                  className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
+                >
+                  Add{checkedPaths.size > 0 ? ` (${checkedPaths.size})` : ""}
+                </button>
+                <button
+                  disabled={checkedPaths.size === 0}
+                  onClick={() => handleBatchStage(false)}
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3">
+                <FileTree
+                  nodes={tree}
+                  selectedPath={selectedFilePath}
+                  checkedPaths={checkedPaths}
+                  onFileClick={setSelectedFilePath}
+                  onToggleCheck={handleToggleCheck}
+                />
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
               {selectedFilePath && repoPath ? (
@@ -101,6 +176,8 @@ export default function Home() {
             선택하세요.
           </p>
         )}
+
+        {tree && <BadgeLegend />}
       </main>
 
       {isBrowserOpen && (

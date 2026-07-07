@@ -2,37 +2,35 @@ import fs from "node:fs";
 import path from "node:path";
 import simpleGit from "simple-git";
 
-export type FileGitStatus =
-  | "modified"
-  | "added"
-  | "deleted"
-  | "renamed"
-  | "untracked"
-  | "conflicted";
+export interface FileGitState {
+  /** index(스테이지)에 변경이 있는지 여부. 체크박스/뱃지 상태로 쓰인다. */
+  staged: boolean;
+}
 
 export interface RepoFileNode {
   name: string;
   path: string;
   type: "file" | "directory";
-  status?: FileGitStatus;
+  status?: FileGitState;
   children?: RepoFileNode[];
 }
 
-async function getChangedFileStatuses(
+async function getFileGitStates(
   repoPath: string,
-): Promise<Map<string, FileGitStatus>> {
+): Promise<Map<string, FileGitState>> {
   const status = await simpleGit(repoPath).status();
-  const changed = new Map<string, FileGitStatus>();
+  const stagedPaths = new Set(status.staged);
+  const states = new Map<string, FileGitState>();
 
-  // 우선순위가 낮은 것부터 넣어서, 뒤에서 conflicted가 항상 덮어쓰도록 한다.
-  for (const file of status.not_added) changed.set(file, "untracked");
-  for (const { to } of status.renamed) changed.set(to, "renamed");
-  for (const file of status.deleted) changed.set(file, "deleted");
-  for (const file of status.created) changed.set(file, "added");
-  for (const file of status.modified) changed.set(file, "modified");
-  for (const file of status.conflicted) changed.set(file, "conflicted");
+  for (const file of status.files) {
+    states.set(file.path, {
+      staged:
+        stagedPaths.has(file.path) ||
+        (file.index !== " " && file.index !== "?"),
+    });
+  }
 
-  return changed;
+  return states;
 }
 
 export async function isGitRepository(repoPath: string): Promise<boolean> {
@@ -57,9 +55,9 @@ export async function listRepoFileTree(
   repoPath: string,
 ): Promise<RepoFileNode[]> {
   const git = simpleGit(repoPath);
-  const [raw, changedStatuses] = await Promise.all([
+  const [raw, fileGitStates] = await Promise.all([
     git.raw(["ls-files", "--cached", "--others", "--exclude-standard"]),
-    getChangedFileStatuses(repoPath),
+    getFileGitStates(repoPath),
   ]);
 
   const relativePaths = raw
@@ -97,7 +95,7 @@ export async function listRepoFileTree(
       name: path.posix.basename(relPath),
       path: relPath,
       type: "file",
-      status: changedStatuses.get(relPath),
+      status: fileGitStates.get(relPath),
     });
   }
 
@@ -157,4 +155,24 @@ export async function getFileDiffContent(
     oldContent.includes("\u0000") || newContent.includes("\u0000");
 
   return { oldContent, newContent, isBinary };
+}
+
+/**
+ * 선택된 파일들을 한 번에 스테이징(git add)하거나 언스테이징(git reset)한다.
+ * 언스테이징은 워킹 디렉터리의 변경 내용은 그대로 두고 index에서만 뺀다.
+ */
+export async function setFilesStaged(
+  repoPath: string,
+  filePaths: string[],
+  staged: boolean,
+): Promise<void> {
+  filePaths.forEach(assertSafeRelativeFilePath);
+  if (filePaths.length === 0) return;
+
+  const git = simpleGit(repoPath);
+  if (staged) {
+    await git.add(filePaths);
+  } else {
+    await git.raw(["reset", "HEAD", "--", ...filePaths]);
+  }
 }
