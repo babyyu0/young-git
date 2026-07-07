@@ -184,3 +184,33 @@ export async function commitChanges(
 ): Promise<void> {
   await simpleGit(repoPath).commit(message);
 }
+
+export interface UnpushedInfo {
+  /** 업스트림(리모트 추적) 브랜치가 설정되어 있는지 여부. */
+  hasUpstream: boolean;
+  /** 아직 푸시되지 않은 커밋들의 제목(첫 줄) 목록, 최신순. */
+  commitTitles: string[];
+}
+
+/** 업스트림 대비 아직 푸시하지 않은 커밋 목록을 가져온다. */
+export async function getUnpushedCommits(
+  repoPath: string,
+): Promise<UnpushedInfo> {
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+
+  if (!status.tracking) {
+    return { hasUpstream: false, commitTitles: [] };
+  }
+
+  const log = await git.log({ from: status.tracking, to: "HEAD" });
+  return {
+    hasUpstream: true,
+    commitTitles: log.all.map((commit) => commit.message),
+  };
+}
+
+/** 현재 브랜치를 업스트림으로 푸시한다. */
+export async function pushChanges(repoPath: string): Promise<void> {
+  await simpleGit(repoPath).push();
+}

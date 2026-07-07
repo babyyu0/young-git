@@ -10,6 +10,7 @@ import {
   type RepoFileNode,
 } from "@/components/FileTree";
 import { FolderBrowserModal } from "@/components/FolderBrowserModal";
+import { PushConfirmModal } from "@/components/PushConfirmModal";
 
 const LAST_REPO_PATH_KEY = "young-git:last-repo-path";
 
@@ -22,6 +23,10 @@ export default function Home() {
   );
   const [checkedPaths, setCheckedPaths] = useState<Set<string>>(new Set());
   const [isCommitModalOpen, setCommitModalOpen] = useState(false);
+  const [isPushConfirmOpen, setPushConfirmOpen] = useState(false);
+  const [unpushedCommitTitles, setUnpushedCommitTitles] = useState<string[]>(
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -115,6 +120,45 @@ export default function Home() {
     }
   };
 
+  const handleOpenPushConfirm = async () => {
+    if (!repoPath) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/repo/unpushed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: repoPath }),
+      });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error ?? "커밋 목록을 불러올 수 없습니다.");
+      setUnpushedCommitTitles(data.commitTitles);
+      setPushConfirmOpen(true);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "커밋 목록을 불러올 수 없습니다.",
+      );
+    }
+  };
+
+  const handleConfirmPush = async () => {
+    if (!repoPath) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/repo/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: repoPath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "푸시할 수 없습니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "푸시할 수 없습니다.");
+    } finally {
+      setPushConfirmOpen(false);
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-8 py-8">
@@ -133,12 +177,20 @@ export default function Home() {
         {repoPath && (
           <div className="flex items-center justify-between gap-4">
             <p className="truncate text-sm text-zinc-500">{repoPath}</p>
-            <button
-              onClick={() => setCommitModalOpen(true)}
-              className="shrink-0 rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              커밋하기
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={() => setCommitModalOpen(true)}
+                className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                커밋하기
+              </button>
+              <button
+                onClick={handleOpenPushConfirm}
+                className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                푸쉬하기
+              </button>
+            </div>
           </div>
         )}
         {loading && <p className="text-sm text-zinc-500">불러오는 중...</p>}
@@ -219,6 +271,14 @@ export default function Home() {
         <CommitModal
           onCommit={handleCommit}
           onClose={() => setCommitModalOpen(false)}
+        />
+      )}
+
+      {isPushConfirmOpen && (
+        <PushConfirmModal
+          commitTitles={unpushedCommitTitles}
+          onConfirm={handleConfirmPush}
+          onCancel={() => setPushConfirmOpen(false)}
         />
       )}
     </div>

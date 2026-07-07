@@ -2,6 +2,14 @@
 
 import { useState } from "react";
 
+const MESSAGE_TEMPLATE = `* 원인
+  * 원인에 대한 설명
+* 수정 사항
+  * 수정사항에 대한 설명
+* 영향 범위
+  * 영향 범위를 지정
+* 타겟브랜치 : 000000`;
+
 interface CommitModalProps {
   onCommit: (title: string, message: string) => void;
   onClose: () => void;
@@ -9,7 +17,7 @@ interface CommitModalProps {
 
 export function CommitModal({ onCommit, onClose }: CommitModalProps) {
   const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(MESSAGE_TEMPLATE);
 
   const canSubmit = title.trim().length > 0;
 
@@ -48,9 +56,9 @@ export function CommitModal({ onCommit, onClose }: CommitModalProps) {
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              rows={6}
+              rows={9}
               placeholder="자세한 설명"
-              className="w-full resize-none rounded border border-neutral-300 px-2 py-1.5 text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+              className="w-full resize-none rounded border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
             />
           </div>
         </div>
