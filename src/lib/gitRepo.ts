@@ -176,3 +176,11 @@ export async function setFilesStaged(
     await git.raw(["reset", "HEAD", "--", ...filePaths]);
   }
 }
+
+/** 현재 스테이징된 변경 내용을 커밋한다. */
+export async function commitChanges(
+  repoPath: string,
+  message: string,
+): Promise<void> {
+  await simpleGit(repoPath).commit(message);
+}

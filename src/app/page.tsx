@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BadgeLegend } from "@/components/BadgeLegend";
+import { CommitModal } from "@/components/CommitModal";
 import { FileDiffViewer } from "@/components/FileDiffViewer";
 import {
   collectCheckablePaths,
@@ -20,6 +21,7 @@ export default function Home() {
     null,
   );
   const [checkedPaths, setCheckedPaths] = useState<Set<string>>(new Set());
+  const [isCommitModalOpen, setCommitModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -95,6 +97,24 @@ export default function Home() {
     }
   };
 
+  const handleCommit = async (title: string, message: string) => {
+    if (!repoPath) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/repo/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: repoPath, title, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "커밋할 수 없습니다.");
+      setTree(data.tree);
+      setCommitModalOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "커밋할 수 없습니다.");
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-8 py-8">
@@ -111,7 +131,15 @@ export default function Home() {
         </div>
 
         {repoPath && (
-          <p className="truncate text-sm text-zinc-500">{repoPath}</p>
+          <div className="flex items-center justify-between gap-4">
+            <p className="truncate text-sm text-zinc-500">{repoPath}</p>
+            <button
+              onClick={() => setCommitModalOpen(true)}
+              className="shrink-0 rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              커밋하기
+            </button>
+          </div>
         )}
         {loading && <p className="text-sm text-zinc-500">불러오는 중...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -184,6 +212,13 @@ export default function Home() {
         <FolderBrowserModal
           onSelect={handleSelect}
           onClose={() => setBrowserOpen(false)}
+        />
+      )}
+
+      {isCommitModalOpen && (
+        <CommitModal
+          onCommit={handleCommit}
+          onClose={() => setCommitModalOpen(false)}
         />
       )}
     </div>
