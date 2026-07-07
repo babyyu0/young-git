@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BadgeLegend } from "@/components/BadgeLegend";
 import { BranchSelect } from "@/components/BranchSelect";
+import { BranchSwitchConflictModal } from "@/components/BranchSwitchConflictModal";
 import { CommitModal } from "@/components/CommitModal";
 import { CreateBranchModal } from "@/components/CreateBranchModal";
 import { FileDiffViewer } from "@/components/FileDiffViewer";
@@ -33,7 +34,12 @@ export default function Home() {
     [],
   );
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [branchSwitchConflict, setBranchSwitchConflict] = useState<{
+    branch: string;
+    changedFiles: string[];
+  } | null>(null);
 
   const handleSelect = async (path: string) => {
     setLoading(true);
@@ -127,22 +133,38 @@ export default function Home() {
     }
   };
 
-  const handleCheckoutBranch = async (branch: string) => {
+  const handleCheckoutBranch = async (
+    branch: string,
+    mode?: "stash" | "discard",
+  ) => {
     if (!repoPath) return;
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch("/api/repo/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: repoPath, branch }),
+        body: JSON.stringify({ path: repoPath, branch, mode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "브랜치를 전환할 수 없습니다.");
+
+      if (data.status === "needs-decision") {
+        setBranchSwitchConflict({ branch, changedFiles: data.changedFiles });
+        return;
+      }
+
+      setBranchSwitchConflict(null);
       setTree(data.tree);
       setCurrentBranch(data.current);
       setBranches(data.branches);
       setSelectedFilePath(null);
       setCheckedPaths(new Set());
+      if (data.stashed) {
+        setNotice(
+          "변경사항을 stash하고 브랜치를 전환했습니다. git stash pop으로 복원할 수 있습니다.",
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "브랜치를 전환할 수 없습니다.");
     }
@@ -255,6 +277,7 @@ export default function Home() {
         )}
         {loading && <p className="text-sm text-zinc-500">불러오는 중...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
+        {notice && <p className="text-sm text-blue-600">{notice}</p>}
 
         {tree && (
           <div className="flex min-h-0 flex-1 gap-4">
@@ -346,6 +369,20 @@ export default function Home() {
         <CreateBranchModal
           onCreate={handleCreateBranch}
           onClose={() => setCreateBranchModalOpen(false)}
+        />
+      )}
+
+      {branchSwitchConflict && (
+        <BranchSwitchConflictModal
+          branch={branchSwitchConflict.branch}
+          changedFiles={branchSwitchConflict.changedFiles}
+          onStash={() =>
+            handleCheckoutBranch(branchSwitchConflict.branch, "stash")
+          }
+          onDiscard={() =>
+            handleCheckoutBranch(branchSwitchConflict.branch, "discard")
+          }
+          onCancel={() => setBranchSwitchConflict(null)}
         />
       )}
     </div>

@@ -4,18 +4,23 @@ import {
   isGitRepository,
   listBranches,
   listRepoFileTree,
+  type CheckoutDirtyMode,
 } from "@/lib/gitRepo";
+
+const VALID_MODES: CheckoutDirtyMode[] = ["stash", "discard"];
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const repoPath = body?.path;
   const branch = body?.branch;
+  const mode = body?.mode;
 
   if (
     !repoPath ||
     typeof repoPath !== "string" ||
     !branch ||
-    typeof branch !== "string"
+    typeof branch !== "string" ||
+    (mode !== undefined && !VALID_MODES.includes(mode))
   ) {
     return NextResponse.json({ error: "브랜치가 필요합니다." }, { status: 400 });
   }
@@ -29,12 +34,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await checkoutBranch(repoPath, branch);
+    const result = await checkoutBranch(repoPath, branch, mode);
+
+    if (result.status === "needs-decision") {
+      return NextResponse.json(result);
+    }
+
     const [tree, branchInfo] = await Promise.all([
       listRepoFileTree(repoPath),
       listBranches(repoPath),
     ]);
-    return NextResponse.json({ tree, ...branchInfo });
+    return NextResponse.json({ ...result, tree, ...branchInfo });
   } catch (error) {
     return NextResponse.json(
       {

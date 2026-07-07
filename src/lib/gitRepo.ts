@@ -192,27 +192,69 @@ export interface UnpushedInfo {
   commitTitles: string[];
 }
 
-/** 업스트림 대비 아직 푸시하지 않은 커밋 목록을 가져온다. */
+async function remoteRefExists(
+  git: ReturnType<typeof simpleGit>,
+  ref: string,
+): Promise<boolean> {
+  try {
+    await git.raw(["rev-parse", "--verify", ref]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 비교 기준이 될 원격 ref를 정한다. 업스트림이 이미 설정되어 있으면 그것을,
+ * 아니면 같은 이름의 origin 브랜치(origin/<current>)가 있는지 확인해서 쓴다.
+ * 둘 다 없으면(원격에 한 번도 push된 적 없는 브랜치) null을 돌려준다.
+ */
+async function resolveCompareRef(
+  git: ReturnType<typeof simpleGit>,
+  status: Awaited<ReturnType<ReturnType<typeof simpleGit>["status"]>>,
+): Promise<string | null> {
+  if (status.tracking) return status.tracking;
+  if (!status.current) return null;
+
+  const candidate = `origin/${status.current}`;
+  return (await remoteRefExists(git, candidate)) ? candidate : null;
+}
+
+/** 업스트림(또는 같은 이름의 origin 브랜치) 대비 아직 푸시하지 않은 커밋 목록을 가져온다. */
 export async function getUnpushedCommits(
   repoPath: string,
 ): Promise<UnpushedInfo> {
   const git = simpleGit(repoPath);
   const status = await git.status();
+  const compareRef = await resolveCompareRef(git, status);
 
-  if (!status.tracking) {
-    return { hasUpstream: false, commitTitles: [] };
+  if (!compareRef) {
+    // 원격에 같은 이름의 브랜치가 아예 없으면(첫 push), 로컬 커밋 전체가 새로 올라간다.
+    const log = await git.log();
+    return {
+      hasUpstream: false,
+      commitTitles: log.all.map((commit) => commit.message),
+    };
   }
 
-  const log = await git.log({ from: status.tracking, to: "HEAD" });
+  const log = await git.log({ from: compareRef, to: "HEAD" });
   return {
-    hasUpstream: true,
+    hasUpstream: Boolean(status.tracking),
     commitTitles: log.all.map((commit) => commit.message),
   };
 }
 
-/** 현재 브랜치를 업스트림으로 푸시한다. */
+/**
+ * 현재 브랜치를 origin의 같은 이름 브랜치로 푸시한다.
+ * 업스트림이 아직 설정되지 않았다면(-u) 그 자리에서 설정한다.
+ */
 export async function pushChanges(repoPath: string): Promise<void> {
-  await simpleGit(repoPath).push();
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+  if (!status.current) {
+    throw new Error("현재 브랜치를 확인할 수 없습니다(detached HEAD).");
+  }
+  await git.raw(["push", "-u", "origin", status.current]);
 }
 
 export interface BranchInfo {
@@ -226,12 +268,44 @@ export async function listBranches(repoPath: string): Promise<BranchInfo> {
   return { current: summary.current, branches: summary.all };
 }
 
-/** 다른 브랜치로 체크아웃한다. */
+export type CheckoutDirtyMode = "stash" | "discard";
+
+export type CheckoutResult =
+  | { status: "needs-decision"; changedFiles: string[] }
+  | { status: "ok"; stashed: boolean };
+
+/**
+ * 다른 브랜치로 체크아웃한다. 워킹 디렉터리에 변경사항(추적 중 + untracked)이
+ * 있고 처리 방식(mode)이 정해지지 않았다면, 체크아웃을 진행하지 않고
+ * "needs-decision"과 변경된 파일 목록을 돌려준다(사용자가 stash/discard를
+ * 선택하도록 하기 위함). mode가 주어지면 그에 따라 처리한 뒤 체크아웃한다.
+ * stash한 내용은 자동으로 복원하지 않으므로, 필요하면 git stash pop으로 꺼내야 한다.
+ */
 export async function checkoutBranch(
   repoPath: string,
   branch: string,
-): Promise<void> {
-  await simpleGit(repoPath).checkout(branch);
+  mode?: CheckoutDirtyMode,
+): Promise<CheckoutResult> {
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+  const isDirty = !status.isClean();
+
+  if (isDirty && !mode) {
+    return {
+      status: "needs-decision",
+      changedFiles: status.files.map((file) => file.path),
+    };
+  }
+
+  if (isDirty && mode === "stash") {
+    await git.stash(["push", "--include-untracked"]);
+  } else if (isDirty && mode === "discard") {
+    await git.raw(["reset", "--hard", "HEAD"]);
+    await git.raw(["clean", "-fd"]);
+  }
+
+  await git.checkout(branch);
+  return { status: "ok", stashed: isDirty && mode === "stash" };
 }
 
 /** 현재 HEAD에서 새 브랜치를 만들고 그 브랜치로 체크아웃한다. */
