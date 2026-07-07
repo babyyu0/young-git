@@ -154,7 +154,36 @@ export async function getFileDiffContent(
   const isBinary =
     oldContent.includes("\u0000") || newContent.includes("\u0000");
 
-  return { oldContent, newContent, isBinary };
+  if (isBinary) {
+    return { oldContent, newContent, isBinary };
+  }
+
+  // core.autocrlf=true인 환경에서는 git show(HEAD, LF)와 실제 워킹 디렉토리
+  // 파일(CRLF)의 줄바꿈 문자가 달라서, 내용이 같은 줄도 다르다고 diff될 수 있다.
+  // 줄바꿈을 통일했을 때도 내용이 다르면 진짜 변경이므로 정규화된 내용으로 비교한다.
+  const normalizedOld = oldContent.replace(/\r\n/g, "\n");
+  const normalizedNew = newContent.replace(/\r\n/g, "\n");
+
+  if (normalizedOld !== normalizedNew) {
+    return { oldContent: normalizedOld, newContent: normalizedNew, isBinary };
+  }
+
+  if (oldContent === newContent) {
+    return { oldContent, newContent, isBinary };
+  }
+
+  // 정규화하면 내용이 같다 = 줄바꿈 문자만 다르다는 뜻. 대부분은 체크아웃 시
+  // core.autocrlf가 만드는 잡음이지만, git이 실제로 이 파일을 변경된 것으로
+  // 보고 있다면(예: 파일 전체의 줄바꿈 스타일이 진짜로 바뀐 경우) 원본 그대로
+  // 돌려줘서 그 차이가 diff에 드러나게 한다.
+  const status = await git.status();
+  const isChangedInGit = status.files.some((file) => file.path === filePath);
+
+  if (isChangedInGit) {
+    return { oldContent, newContent, isBinary };
+  }
+
+  return { oldContent: normalizedNew, newContent: normalizedNew, isBinary };
 }
 
 /**

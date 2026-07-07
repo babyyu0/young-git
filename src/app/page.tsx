@@ -284,7 +284,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-8 py-8">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-4 px-8 py-8">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-black dark:text-zinc-50">
             young-git
