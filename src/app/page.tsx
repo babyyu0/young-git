@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileDiffViewer } from "@/components/FileDiffViewer";
 import { FileTree, type RepoFileNode } from "@/components/FileTree";
 import { FolderBrowserModal } from "@/components/FolderBrowserModal";
+
+const LAST_REPO_PATH_KEY = "young-git:last-repo-path";
 
 export default function Home() {
   const [isBrowserOpen, setBrowserOpen] = useState(false);
@@ -30,12 +32,22 @@ export default function Home() {
       setTree(data.tree);
       setSelectedFilePath(null);
       setBrowserOpen(false);
+      localStorage.setItem(LAST_REPO_PATH_KEY, data.path);
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장소를 불러올 수 없습니다.");
+      localStorage.removeItem(LAST_REPO_PATH_KEY);
     } finally {
       setLoading(false);
     }
   };
+
+  // 새로고침해도 마지막으로 연 저장소를 자동으로 다시 불러온다.
+  useEffect(() => {
+    (async () => {
+      const lastPath = localStorage.getItem(LAST_REPO_PATH_KEY);
+      if (lastPath) await handleSelect(lastPath);
+    })();
+  }, []);
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
