@@ -170,14 +170,14 @@ export default function Home() {
     }
   };
 
-  const handleCreateBranch = async (name: string) => {
+  const handleCreateBranch = async (name: string, baseBranch: string) => {
     if (!repoPath) return;
     setError(null);
     try {
       const res = await fetch("/api/repo/branch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: repoPath, name }),
+        body: JSON.stringify({ path: repoPath, name, baseBranch }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "브랜치를 만들 수 없습니다.");
@@ -365,8 +365,10 @@ export default function Home() {
         />
       )}
 
-      {isCreateBranchModalOpen && (
+      {isCreateBranchModalOpen && currentBranch && (
         <CreateBranchModal
+          branches={branches}
+          currentBranch={currentBranch}
           onCreate={handleCreateBranch}
           onClose={() => setCreateBranchModalOpen(false)}
         />

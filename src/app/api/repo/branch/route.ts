@@ -10,15 +10,18 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const repoPath = body?.path;
   const name = body?.name;
+  const baseBranch = body?.baseBranch;
 
   if (
     !repoPath ||
     typeof repoPath !== "string" ||
     !name ||
-    typeof name !== "string"
+    typeof name !== "string" ||
+    !baseBranch ||
+    typeof baseBranch !== "string"
   ) {
     return NextResponse.json(
-      { error: "브랜치 이름이 필요합니다." },
+      { error: "브랜치 이름과 기준 브랜치가 필요합니다." },
       { status: 400 },
     );
   }
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await createBranch(repoPath, name);
+    await createBranch(repoPath, name, baseBranch);
     const [tree, branchInfo] = await Promise.all([
       listRepoFileTree(repoPath),
       listBranches(repoPath),

@@ -308,10 +308,11 @@ export async function checkoutBranch(
   return { status: "ok", stashed: isDirty && mode === "stash" };
 }
 
-/** 현재 HEAD에서 새 브랜치를 만들고 그 브랜치로 체크아웃한다. */
+/** baseBranch에서 새 브랜치를 만들고 그 브랜치로 체크아웃한다. */
 export async function createBranch(
   repoPath: string,
   branchName: string,
+  baseBranch: string,
 ): Promise<void> {
-  await simpleGit(repoPath).checkoutLocalBranch(branchName);
+  await simpleGit(repoPath).checkoutBranch(branchName, baseBranch);
 }
