@@ -2,11 +2,37 @@ import fs from "node:fs";
 import path from "node:path";
 import simpleGit from "simple-git";
 
+export type FileGitStatus =
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
+
 export interface RepoFileNode {
   name: string;
   path: string;
   type: "file" | "directory";
+  status?: FileGitStatus;
   children?: RepoFileNode[];
+}
+
+async function getChangedFileStatuses(
+  repoPath: string,
+): Promise<Map<string, FileGitStatus>> {
+  const status = await simpleGit(repoPath).status();
+  const changed = new Map<string, FileGitStatus>();
+
+  // 우선순위가 낮은 것부터 넣어서, 뒤에서 conflicted가 항상 덮어쓰도록 한다.
+  for (const file of status.not_added) changed.set(file, "untracked");
+  for (const { to } of status.renamed) changed.set(to, "renamed");
+  for (const file of status.deleted) changed.set(file, "deleted");
+  for (const file of status.created) changed.set(file, "added");
+  for (const file of status.modified) changed.set(file, "modified");
+  for (const file of status.conflicted) changed.set(file, "conflicted");
+
+  return changed;
 }
 
 export async function isGitRepository(repoPath: string): Promise<boolean> {
@@ -31,11 +57,9 @@ export async function listRepoFileTree(
   repoPath: string,
 ): Promise<RepoFileNode[]> {
   const git = simpleGit(repoPath);
-  const raw = await git.raw([
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
+  const [raw, changedStatuses] = await Promise.all([
+    git.raw(["ls-files", "--cached", "--others", "--exclude-standard"]),
+    getChangedFileStatuses(repoPath),
   ]);
 
   const relativePaths = raw
@@ -73,6 +97,7 @@ export async function listRepoFileTree(
       name: path.posix.basename(relPath),
       path: relPath,
       type: "file",
+      status: changedStatuses.get(relPath),
     });
   }
 
@@ -86,4 +111,50 @@ export async function listRepoFileTree(
   sortTree(root);
 
   return root;
+}
+
+export interface FileDiffContent {
+  oldContent: string;
+  newContent: string;
+  isBinary: boolean;
+}
+
+function assertSafeRelativeFilePath(filePath: string) {
+  const normalized = path.posix.normalize(filePath);
+  if (normalized.startsWith("..") || path.posix.isAbsolute(normalized)) {
+    throw new Error("잘못된 파일 경로입니다.");
+  }
+}
+
+/**
+ * HEAD 시점(변경 전)과 워킹 디렉터리(변경 후)의 파일 내용을 각각 읽어온다.
+ * 새로 추가된 파일은 HEAD에 없으므로 oldContent가 빈 문자열이고,
+ * 삭제된 파일은 워킹 디렉터리에 없으므로 newContent가 빈 문자열이다.
+ */
+export async function getFileDiffContent(
+  repoPath: string,
+  filePath: string,
+): Promise<FileDiffContent> {
+  assertSafeRelativeFilePath(filePath);
+
+  const git = simpleGit(repoPath);
+
+  let oldContent = "";
+  try {
+    oldContent = await git.show([`HEAD:${filePath}`]);
+  } catch {
+    oldContent = "";
+  }
+
+  let newContent = "";
+  try {
+    newContent = fs.readFileSync(path.join(repoPath, filePath), "utf8");
+  } catch {
+    newContent = "";
+  }
+
+  const isBinary =
+    oldContent.includes("\u0000") || newContent.includes("\u0000");
+
+  return { oldContent, newContent, isBinary };
 }
