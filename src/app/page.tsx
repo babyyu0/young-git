@@ -116,6 +116,32 @@ export default function Home() {
     }
   };
 
+  const handleDiscard = async () => {
+    if (!repoPath || checkedPaths.size === 0) return;
+    const confirmed = window.confirm(
+      `선택한 ${checkedPaths.size}개 파일의 변경사항을 되돌립니다. 이 작업은 되돌릴 수 없습니다. 계속할까요?`,
+    );
+    if (!confirmed) return;
+
+    setError(null);
+    try {
+      const res = await fetch("/api/repo/discard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: repoPath,
+          filePaths: Array.from(checkedPaths),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "되돌릴 수 없습니다.");
+      setTree(data.tree);
+      setCheckedPaths(new Set());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "되돌릴 수 없습니다.");
+    }
+  };
+
   const handleCommit = async (title: string, message: string) => {
     if (!repoPath) return;
     setError(null);
@@ -336,6 +362,13 @@ export default function Home() {
                   className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
                 >
                   Reset
+                </button>
+                <button
+                  disabled={checkedPaths.size === 0}
+                  onClick={handleDiscard}
+                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-40"
+                >
+                  Discard
                 </button>
               </div>
 

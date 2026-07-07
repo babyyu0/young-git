@@ -177,6 +177,54 @@ export async function setFilesStaged(
   }
 }
 
+/**
+ * 선택된 파일들의 수정사항을 되돌린다(복구 불가).
+ * - 한 번도 커밋된 적 없는 파일(untracked, 또는 스테이징된 새 파일)은 삭제한다.
+ * - 이미 커밋된 적 있는 파일은 HEAD 시점 내용으로 복원한다(스테이징 여부 무관).
+ */
+export async function discardFiles(
+  repoPath: string,
+  filePaths: string[],
+): Promise<void> {
+  filePaths.forEach(assertSafeRelativeFilePath);
+  if (filePaths.length === 0) return;
+
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+  const statusByPath = new Map(status.files.map((file) => [file.path, file]));
+
+  const toDelete: string[] = [];
+  const toRestore: string[] = [];
+
+  for (const filePath of filePaths) {
+    const fileStatus = statusByPath.get(filePath);
+    if (!fileStatus) continue;
+
+    const isUntracked =
+      fileStatus.index === "?" && fileStatus.working_dir === "?";
+    const isNewlyAdded = fileStatus.index === "A";
+
+    if (isUntracked || isNewlyAdded) {
+      toDelete.push(filePath);
+    } else {
+      toRestore.push(filePath);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    await git.raw(["reset", "HEAD", "--", ...toDelete]);
+    await Promise.all(
+      toDelete.map((filePath) =>
+        fs.promises.rm(path.join(repoPath, filePath), { force: true }),
+      ),
+    );
+  }
+
+  if (toRestore.length > 0) {
+    await git.raw(["checkout", "HEAD", "--", ...toRestore]);
+  }
+}
+
 /** 현재 스테이징된 변경 내용을 커밋한다. */
 export async function commitChanges(
   repoPath: string,
