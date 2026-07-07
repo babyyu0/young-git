@@ -214,3 +214,30 @@ export async function getUnpushedCommits(
 export async function pushChanges(repoPath: string): Promise<void> {
   await simpleGit(repoPath).push();
 }
+
+export interface BranchInfo {
+  current: string;
+  branches: string[];
+}
+
+/** 로컬 브랜치 목록과 현재 브랜치를 가져온다. */
+export async function listBranches(repoPath: string): Promise<BranchInfo> {
+  const summary = await simpleGit(repoPath).branchLocal();
+  return { current: summary.current, branches: summary.all };
+}
+
+/** 다른 브랜치로 체크아웃한다. */
+export async function checkoutBranch(
+  repoPath: string,
+  branch: string,
+): Promise<void> {
+  await simpleGit(repoPath).checkout(branch);
+}
+
+/** 현재 HEAD에서 새 브랜치를 만들고 그 브랜치로 체크아웃한다. */
+export async function createBranch(
+  repoPath: string,
+  branchName: string,
+): Promise<void> {
+  await simpleGit(repoPath).checkoutLocalBranch(branchName);
+}

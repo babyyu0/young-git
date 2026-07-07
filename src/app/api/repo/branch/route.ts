@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isGitRepository, listBranches, listRepoFileTree } from "@/lib/gitRepo";
+import {
+  createBranch,
+  isGitRepository,
+  listBranches,
+  listRepoFileTree,
+} from "@/lib/gitRepo";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const repoPath = body?.path;
+  const name = body?.name;
 
-  if (!repoPath || typeof repoPath !== "string") {
-    return NextResponse.json({ error: "경로가 필요합니다." }, { status: 400 });
+  if (
+    !repoPath ||
+    typeof repoPath !== "string" ||
+    !name ||
+    typeof name !== "string"
+  ) {
+    return NextResponse.json(
+      { error: "브랜치 이름이 필요합니다." },
+      { status: 400 },
+    );
   }
 
   const isRepo = await isGitRepository(repoPath);
@@ -18,20 +32,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await createBranch(repoPath, name);
     const [tree, branchInfo] = await Promise.all([
       listRepoFileTree(repoPath),
       listBranches(repoPath),
     ]);
-    return NextResponse.json({ path: repoPath, tree, ...branchInfo });
+    return NextResponse.json({ tree, ...branchInfo });
   } catch (error) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "파일 목록을 불러올 수 없습니다.",
+          error instanceof Error ? error.message : "브랜치를 만들 수 없습니다.",
       },
-      { status: 500 },
+      { status: 400 },
     );
   }
 }
