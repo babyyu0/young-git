@@ -10,6 +10,8 @@ import { FileDiffViewer } from "@/components/FileDiffViewer";
 import {
   collectCheckablePaths,
   FileTree,
+  filterChangedOnly,
+  filterTree,
   type RepoFileNode,
 } from "@/components/FileTree";
 import { FolderBrowserModal } from "@/components/FolderBrowserModal";
@@ -37,6 +39,7 @@ export default function Home() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [branchSwitchConflict, setBranchSwitchConflict] = useState<{
     branch: string;
     changedFiles: string[];
@@ -87,6 +90,11 @@ export default function Home() {
   };
 
   const checkablePaths = tree ? collectCheckablePaths(tree) : [];
+  const filteredTree = tree
+    ? searchQuery.trim()
+      ? filterTree(tree, searchQuery)
+      : filterChangedOnly(tree)
+    : null;
   const allChecked =
     checkablePaths.length > 0 && checkedPaths.size === checkablePaths.length;
 
@@ -372,14 +380,30 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3">
-                <FileTree
-                  nodes={tree}
-                  selectedPath={selectedFilePath}
-                  checkedPaths={checkedPaths}
-                  onFileClick={setSelectedFilePath}
-                  onToggleCheck={handleToggleCheck}
+              <div className="shrink-0 border-b border-zinc-200 p-2 dark:border-zinc-800">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="파일 검색"
+                  className="w-full rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
                 />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3">
+                {filteredTree && (
+                  <FileTree
+                    nodes={filteredTree}
+                    selectedPath={selectedFilePath}
+                    checkedPaths={checkedPaths}
+                    onFileClick={setSelectedFilePath}
+                    onToggleCheck={handleToggleCheck}
+                    emptyMessage={
+                      searchQuery.trim()
+                        ? "검색 결과가 없습니다."
+                        : "변경된 파일이 없습니다."
+                    }
+                  />
+                )}
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">

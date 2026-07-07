@@ -112,6 +112,7 @@ interface FileTreeProps {
   checkedPaths: Set<string>;
   onFileClick: (filePath: string) => void;
   onToggleCheck: (filePath: string, checked: boolean) => void;
+  emptyMessage?: string;
 }
 
 export function FileTree({
@@ -120,9 +121,10 @@ export function FileTree({
   checkedPaths,
   onFileClick,
   onToggleCheck,
+  emptyMessage = "파일이 없습니다.",
 }: FileTreeProps) {
   if (nodes.length === 0) {
-    return <p className="text-sm text-neutral-500">파일이 없습니다.</p>;
+    return <p className="text-sm text-neutral-500">{emptyMessage}</p>;
   }
 
   return (
@@ -152,4 +154,52 @@ export function collectCheckablePaths(nodes: RepoFileNode[]): string[] {
   };
   walk(nodes);
   return paths;
+}
+
+/**
+ * 이름에 검색어가 포함된 파일만 남기고 트리를 필터링한다. 폴더 이름이 검색어와
+ * 일치하면 그 하위 전체를 남기고, 아니면 매칭되는 자손이 있는 폴더만 남긴다.
+ */
+export function filterTree(nodes: RepoFileNode[], query: string): RepoFileNode[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return nodes;
+
+  const filterNode = (node: RepoFileNode): RepoFileNode | null => {
+    const selfMatches = node.name.toLowerCase().includes(q);
+
+    if (node.type === "file") {
+      return selfMatches ? node : null;
+    }
+
+    if (selfMatches) return node;
+
+    const children = (node.children ?? [])
+      .map(filterNode)
+      .filter((child): child is RepoFileNode => child !== null);
+
+    return children.length > 0 ? { ...node, children } : null;
+  };
+
+  return nodes
+    .map(filterNode)
+    .filter((node): node is RepoFileNode => node !== null);
+}
+
+/** git status상 변경된(status가 있는) 파일만 남기고 트리를 필터링한다. */
+export function filterChangedOnly(nodes: RepoFileNode[]): RepoFileNode[] {
+  const filterNode = (node: RepoFileNode): RepoFileNode | null => {
+    if (node.type === "file") {
+      return node.status ? node : null;
+    }
+
+    const children = (node.children ?? [])
+      .map(filterNode)
+      .filter((child): child is RepoFileNode => child !== null);
+
+    return children.length > 0 ? { ...node, children } : null;
+  };
+
+  return nodes
+    .map(filterNode)
+    .filter((node): node is RepoFileNode => node !== null);
 }
